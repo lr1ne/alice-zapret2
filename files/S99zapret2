@@ -1,0 +1,7 @@
+#!/bin/sh
+# Autostart zapret2 (nfqws2). Delete this file to remove autostart.
+case "$1" in
+  start)   /data/opt/zapret2/start.sh ;;
+  stop)    /data/opt/zapret2/stop.sh ;;
+  restart) /data/opt/zapret2/stop.sh; /data/opt/zapret2/start.sh ;;
+esac
