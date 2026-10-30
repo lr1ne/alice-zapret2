@@ -12,8 +12,7 @@
 
 Проверено на:
 
-- Яндекс Станция Мини 2 с часами (`yandexmini_2`), прошивка quasar (Buildroot), aarch64
-- root через [hackalice.me](https://hackalice.me), SSH (dropbear, 2222) и ADB (5555)
+- Яндекс Станция Мини 2 без часов (`yandexmini_2`), прошивка quasar (Buildroot), aarch64
 - zapret2 `v1.0.6`, бинарник `linux-arm64` (`nfqws2`)
 
 Технически подойдёт любая Станция с root, `iptables` и поддержкой `NFQUEUE` в
