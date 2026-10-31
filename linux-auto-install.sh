@@ -231,7 +231,9 @@ EOF
 
     # Готовим временный каталог на колонке.
     show_log INFO "Создаю временную папку на Станции..."
-    if ! "$adb_path" shell "mkdir -p $REMOTE_PATH"; then
+    # </dev/null не даём adb shell забирать наш stdin (иначе он съедает ответы
+    # на последующие вопросы скрипта).
+    if ! "$adb_path" shell "mkdir -p $REMOTE_PATH" </dev/null; then
         show_log ERROR "Не удалось создать $REMOTE_PATH на колонке."
         return 1
     fi
@@ -252,13 +254,13 @@ EOF
     show_log ACTION "Запускаю установочный скрипт на Станции..."
     show_log INFO "Выдаю права на выполнение и запускаю install.sh..."
 
-    "$adb_path" shell "chmod +x ${REMOTE_PATH}install.sh && ${REMOTE_PATH}install.sh"
+    "$adb_path" shell "chmod +x ${REMOTE_PATH}install.sh && ${REMOTE_PATH}install.sh" </dev/null
     install_exit_code=$?
 
     # По желанию убираем временные файлы, чтобы не занимать место в /data.
     if prompt_yes_no "Хотите удалить установочный скрипт с колонки?" yes; then
         show_log ACTION "Очищаю временную папку на колонке..."
-        if "$adb_path" shell "rm -rf $REMOTE_PATH"; then
+        if "$adb_path" shell "rm -rf $REMOTE_PATH" </dev/null; then
             show_log SUCCESS "Временные файлы на колонке успешно удалены."
         else
             show_log WARN "Не удалось удалить временные файлы на колонке."
