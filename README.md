@@ -70,10 +70,14 @@ cat /proc/net/ip_tables_matches | tr '\n' ' '; echo
 
 ## 3. Быстрая установка
 
-Скопировать эту папку на колонку (или выполнять по SSH) и запустить от root:
+Самый простой способ — автоматический установщик с ПК по ADB (см. раздел 9).
+Он сам подключается к колонке, копирует файлы и запускает установку.
+
+Либо вручную: скопировать папку `files` на колонку (или выполнять по SSH) и
+запустить от root:
 
 ```sh
-sh install.sh
+sh files/install.sh
 ```
 
 Скрипт:
@@ -81,14 +85,14 @@ sh install.sh
 1. скачивает zapret2 v1.0.6 (`openwrt-embedded`) с GitHub;
 2. распаковывает только нужную архитектуру (`ip2net`, `mdig`, `nfqws2`),
    Lua-скрипты и fake-блобы в `/data/opt/zapret2`;
-3. создаёт `start.sh`, `stop.sh`, `hosts.txt`;
+3. копирует `start.sh`, `stop.sh`, `hosts.txt` из папки `files/`;
 4. ставит автозапуск `/etc/init.d/S99zapret2`;
 5. запускает и проверяет `https://music.youtube.com/`.
 
 Если GitHub с колонки недоступен, скачайте архив на ПК и передайте путь:
 
 ```sh
-ZAPRET_TAR=/data/tmp/zapret2-v1.0.6-openwrt-embedded.tar.gz sh install.sh
+ZAPRET_TAR=/data/tmp/zapret2-v1.0.6-openwrt-embedded.tar.gz sh files/install.sh
 ```
 
 Параметры (переменные окружения): `BASE` (куда ставить, по умолчанию
@@ -250,17 +254,59 @@ TCP (`iptables -A OUTPUT -p udp --dport 443 -j REJECT`), но это грубе�
 ## 8. Файлы в этой папке
 
 ```
-README.md          — этот документ
-install.sh         — автоматическая установка на колонку
-files/start.sh     — запуск nfqws2 + iptables
-files/stop.sh      — остановка
-files/hosts.txt    — хостлист (по умолчанию YouTube)
-files/S99zapret2   — init-скрипт автозапуска
+README.md                — этот документ
+linux-auto-install.sh    — автоустановка с ПК под Linux (ADB)
+windows-auto-install.ps1 — автоустановка с ПК под Windows (ADB)
+files/install.sh         — установка zapret2 на колонку
+files/start.sh           — запуск nfqws2 + iptables
+files/stop.sh            — остановка
+files/hosts.txt          — хостлист (по умолчанию YouTube)
+files/S99zapret2         — init-скрипт автозапуска
 ```
 
 ---
 
-## 9. Дисклеймер
+## 9. Автоматическая установка с ПК (Linux / Windows)
+
+Оба установщика работают одинаково: подключаются к колонке по ADB
+(`<IP>:5555`), копируют содержимое `files/` в `/data/tmp/zapret2-install/`,
+запускают там `install.sh` и по желанию удаляют временные файлы.
+
+Нужен `adb` (Android platform-tools) и включённая отладка ADB на колонке.
+Если `adb` не найден в `PATH`, скрипт попросит указать путь к нему.
+
+### Linux
+
+```sh
+chmod +x linux-auto-install.sh
+./linux-auto-install.sh
+```
+
+Скрипт спросит подтверждение и IP-адрес станции, проверит соединение,
+перенесёт `install.sh`, `start.sh`, `stop.sh`, `hosts.txt`, `S99zapret2`
+и запустит установку. После завершения предложит очистить `/data/tmp`.
+
+Установка ADB (пример для Debian/Ubuntu): `sudo apt install android-tools-adb`
+(в других дистрибутивах — пакет `android-tools` / `android-platform-tools`).
+
+### Windows
+
+Запустить PowerShell от имени администратора и выполнить:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
+.\windows-auto-install.ps1
+```
+
+Либо одной командой без изменения политики:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\windows-auto-install.ps1
+```
+
+---
+
+## 10. Дисклеймер
 
 - Всё делается на ваш собственный девайс под root; используйте на свой страх и риск.
 - zapret2 распространяется под своей лицензией — см. репозиторий
@@ -268,7 +314,3 @@ files/S99zapret2   — init-скрипт автозапуска
 - Обход применяется только к трафику самой колонки. Для остальных устройств
   нужен zapret на роутере/шлюзе или прокси.
 - При обновлении прошивки/сбросе `/data` установку нужно повторить.
-
-# Windows установка
-
-Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
