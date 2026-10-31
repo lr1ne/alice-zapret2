@@ -1,5 +1,15 @@
 #!/bin/sh
-# Autostart zapret2 (nfqws2). Delete this file to remove autostart.
+# S99zapret2 — init-скрипт автозапуска zapret2 для BusyBox init.
+#
+# Устанавливается в /etc/init.d/S99zapret2. При загрузке система вызывает
+# скрипт с аргументом start, при выключении — stop.
+# Префикс S99 означает, что запуск происходит поздно, после поднятия сети
+# (S40wifi/S41dhcpcd) — иначе правила iptables будет некуда применить.
+#
+# Параметров нет: start.sh и stop.sh сами используют значения по умолчанию
+# (BASE=/data/opt/zapret2, QNUM=200). Если каталог установки другой,
+# поправьте пути ниже.
+
 case "$1" in
   start)   /data/opt/zapret2/start.sh ;;
   stop)    /data/opt/zapret2/stop.sh ;;
