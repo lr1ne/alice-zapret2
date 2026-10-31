@@ -2,18 +2,24 @@
 #
 # linux-auto-install.sh — установка zapret2 на Яндекс Станцию с ПК под Linux.
 #
-# Скрипт подключается к колонке по ADB (порт 5555), копирует во временный
-# каталог /data/tmp/zapret2-install/ файлы из папки files/ и запускает на
-# станции install.sh.
+# Что делает скрипт:
+#   1) проверяет наличие adb (при отсутствии просит указать путь);
+#   2) спрашивает IP-адрес колонки и подключается к ней по ADB (порт 5555);
+#   3) копирует install.sh, start.sh, stop.sh, uninstall.sh, hosts.txt и
+#      S99zapret2 в /data/tmp/zapret2-install/ на колонке;
+#   4) запускает install.sh, который ставит zapret2 в /data/opt/zapret2;
+#   5) предлагает удалить временные файлы с колонки.
 #
 # Запуск:
 #   ./linux-auto-install.sh
 #
-# Требуется adb (android-tools / adb в PATH) либо путь к нему будет запрошен.
+# Требуется adb (android-tools / android-platform-tools) в PATH либо путь
+# к нему будет запрошен. На колонке должна быть включена отладка по ADB.
 
 set -u
 
 # ---- Оформление -------------------------------------------------------------
+# Логотип печатается при старте, цвета используются в show_log.
 LOGO='
 ▐▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▌
 ▐  █████╗ ██╗     ██╗ ██████╗███████╗                       ▌
@@ -40,6 +46,8 @@ C_ACTION='\033[35m'
 C_WHITE='\033[97m'
 C_RESET='\033[0m'
 
+# show_log ТИП "сообщение" — единообразный вывод с цветным префиксом.
+# Типы: INFO, SUCCESS, WARN, ERROR, ACTION, INPUT, OK.
 show_log() {
     local type="$1"
     local message="$2"
@@ -59,6 +67,8 @@ show_log() {
     printf '%b%s%b%b%s%b\n' "$pcolor" "$prefix" "$C_RESET" "$mcolor" "$message" "$C_RESET"
 }
 
+# prompt_yes_no "вопрос" yes|no — вопрос с ответом да/нет.
+# Возвращает 0 (да) или 1 (нет), при EOF тоже 1.
 prompt_yes_no() {
     local question="$1"
     local default="$2"
@@ -71,7 +81,8 @@ prompt_yes_no() {
     fi
 
     while true; do
-        printf '%b [?] [INPUT]   %b%b%s %b' "$C_ACTION" "$C_RESET" "$C_WHITE" "$question" "$C_RESET"
+        printf '%b [?] [INPUT]   %b%b%s %s %b' "$C_ACTION" "$C_RESET" "$C_WHITE" "$question" "$hint" "$C_RESET"
+        # read вернёт ошибку, если stdin закрыт (например, скрипт без терминала).
         if ! read -r answer; then
             echo
             return 1
@@ -97,23 +108,32 @@ if ! prompt_yes_no "Вы хотите продолжить выполнение 
     exit 0
 fi
 
+# ---- Параметры --------------------------------------------------------------
+# Папка files лежит рядом со скриптом; оттуда берутся все компоненты.
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 LOCAL_PATH="$SCRIPT_DIR/files"
+# Временный каталог на колонке. Именно сюда копируются файлы перед запуском
+# install.sh; после установки его можно удалить.
 REMOTE_PATH="/data/tmp/zapret2-install/"
+# Список файлов, которые нужно передать на колонку. uninstall.sh тоже нужен
+# установщику: он копирует его в /data/opt/zapret2 рядом с start.sh.
 FILES_TO_COPY=(
     "install.sh"
     "start.sh"
     "stop.sh"
+    "uninstall.sh"
     "hosts.txt"
     "S99zapret2"
 )
 
+# ---- Основная логика --------------------------------------------------------
 installation() {
     local adb_path="adb"
     local alice_ip=""
     local input_ip input_path clean_path file file_name
     local devices_output is_connected line install_exit_code
 
+    # adb может отсутствовать в PATH — тогда просим указать путь к бинарнику.
     show_log ACTION "Проверяю наличие ADB в системе..."
     if ! command -v adb >/dev/null 2>&1; then
         show_log WARN "ADB не найден в системном PATH."
@@ -125,6 +145,7 @@ installation() {
                 show_log ERROR "Ввод прерван."
                 return 1
             fi
+            # Пользователь может ввести путь в кавычках — убираем их.
             clean_path=$(printf '%s' "$input_path" | sed -e 's/^"//' -e 's/"$//')
 
             if [ -f "$clean_path" ] && [ -x "$clean_path" ]; then
@@ -139,6 +160,7 @@ installation() {
         done
     fi
 
+    # Проверяем, что все компоненты на месте, до подключения к колонке.
     for file in "${FILES_TO_COPY[@]}"; do
         if [ ! -f "$LOCAL_PATH/$file" ]; then
             show_log ERROR "Файлы не найдены на ПК: $file"
@@ -147,6 +169,7 @@ installation() {
         fi
     done
 
+    # Запрашиваем IP, пока не получим корректный IPv4-адрес.
     while true; do
         printf '%b [?] [INPUT]   %b%bВведите IP-адрес вашей Яндекс Станции: %b' "$C_ACTION" "$C_RESET" "$C_WHITE" "$C_RESET"
         if ! read -r input_ip; then
@@ -161,6 +184,7 @@ installation() {
             continue
         fi
 
+        # Валидация IPv4 (каждый октет 0–255). Используем POSIX ERE, без (?:).
         if printf '%s' "$input_ip" | grep -Eq '^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'; then
             alice_ip="$input_ip"
             break
@@ -172,11 +196,16 @@ installation() {
     show_log OK "IP-адрес принят: $alice_ip"
     show_log ACTION "Подготовка к переносу файлов..."
 
+    # Подключение по ADB. Сам connect может вернуть ошибку, поэтому реальную
+    # проверку делаем по списку устройств ниже.
     show_log INFO "Подключаюсь к станции по ADB ($alice_ip)..."
     "$adb_path" connect "${alice_ip}:5555" >/dev/null 2>&1
 
+    # Даём ADB время установить соединение.
     sleep 1
 
+    # Ищем в `adb devices` строку вида "<IP>:5555\tdevice".
+    # Точки в IP экранируем, иначе они совпадут с любым символом.
     devices_output=$("$adb_path" devices 2>/dev/null)
     is_connected=0
 
@@ -200,33 +229,36 @@ EOF
 
     show_log SUCCESS "Успешное подключение к Яндекс Станции!"
 
+    # Готовим временный каталог на колонке.
     show_log INFO "Создаю временную папку на Станции..."
-    "$adb_path" shell "mkdir -p $REMOTE_PATH"
-
-    show_log ACTION "Переношу файлы через ADB..."
-    for file in "${FILES_TO_COPY[@]}"; do
-        file_name=$(basename "$file")
-        "$adb_path" push "$LOCAL_PATH/$file" "$REMOTE_PATH$file_name"
-    done
-
-    if [ $? -eq 0 ]; then
-        show_log SUCCESS "Все файлы успешно перенесены через ADB!"
-    else
-        show_log ERROR "Ошибка при передаче файлов через ADB."
+    if ! "$adb_path" shell "mkdir -p $REMOTE_PATH"; then
+        show_log ERROR "Не удалось создать $REMOTE_PATH на колонке."
         return 1
     fi
 
+    # Копируем файлы по одному и проверяем результат каждой передачи.
+    show_log ACTION "Переношу файлы через ADB..."
+    for file in "${FILES_TO_COPY[@]}"; do
+        file_name=$(basename "$file")
+        show_log INFO "  $file_name"
+        if ! "$adb_path" push "$LOCAL_PATH/$file" "$REMOTE_PATH$file_name"; then
+            show_log ERROR "Ошибка при передаче файла $file_name через ADB."
+            return 1
+        fi
+    done
+    show_log SUCCESS "Все файлы успешно перенесены через ADB!"
+
+    # install.sh сам ставит zapret2, конфиги и автозапуск.
     show_log ACTION "Запускаю установочный скрипт на Станции..."
     show_log INFO "Выдаю права на выполнение и запускаю install.sh..."
 
     "$adb_path" shell "chmod +x ${REMOTE_PATH}install.sh && ${REMOTE_PATH}install.sh"
     install_exit_code=$?
 
+    # По желанию убираем временные файлы, чтобы не занимать место в /data.
     if prompt_yes_no "Хотите удалить установочный скрипт с колонки?" yes; then
         show_log ACTION "Очищаю временную папку на колонке..."
-        "$adb_path" shell "rm -rf $REMOTE_PATH"
-
-        if [ $? -eq 0 ]; then
+        if "$adb_path" shell "rm -rf $REMOTE_PATH"; then
             show_log SUCCESS "Временные файлы на колонке успешно удалены."
         else
             show_log WARN "Не удалось удалить временные файлы на колонке."
@@ -239,6 +271,7 @@ EOF
         show_log SUCCESS "Скрипт на колонке отработал успешно!"
     else
         show_log ERROR "Произошла ошибка при выполнении install.sh на стороне Станции."
+        return 1
     fi
 }
 

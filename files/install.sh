@@ -59,6 +59,12 @@ esac
 # Без iptables и поддержки NFQUEUE в ядре nfqws2 работать не сможет:
 # именно через NFQUEUE пакеты попадают в userspace-обработчик.
 command -v iptables >/dev/null 2>&1 || die "iptables not found"
+# На обычных системах модуль xt_NFQUEUE может быть ещё не загружен, поэтому
+# при отсутствии цели пробуем загрузить его вручную. На прошивке станции
+# модули встроены, и modprobe просто не понадобится.
+if ! grep -qw NFQUEUE /proc/net/ip_tables_targets 2>/dev/null; then
+    command -v modprobe >/dev/null 2>&1 && modprobe xt_NFQUEUE 2>/dev/null || true
+fi
 grep -qw NFQUEUE /proc/net/ip_tables_targets 2>/dev/null || die "kernel does not support NFQUEUE"
 
 # ---- Поиск curl/wget --------------------------------------------------------
@@ -163,17 +169,31 @@ HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SRCDIR=$HERE
 # Поддерживаем две раскладки: файлы лежат рядом с install.sh или в files/.
 [ -f "$HERE/files/start.sh" ] && SRCDIR="$HERE/files"
-for f in hosts.txt start.sh stop.sh S99zapret2; do
+for f in hosts.txt start.sh stop.sh S99zapret2 uninstall.sh; do
     [ -f "$SRCDIR/$f" ] || die "missing $SRCDIR/$f"
 done
 
 say "copying config files from $SRCDIR"
-cp "$SRCDIR/hosts.txt"  "$BASE/hosts.txt"
-cp "$SRCDIR/start.sh"   "$BASE/start.sh"
-cp "$SRCDIR/stop.sh"    "$BASE/stop.sh"
-cp "$SRCDIR/S99zapret2" "$BASE/S99zapret2"
+# hosts.txt не перезаписываем: при переустановке у пользователя могли
+# появиться свои домены, и терять их не нужно.
+if [ -f "$BASE/hosts.txt" ]; then
+    say "keeping existing $BASE/hosts.txt"
+else
+    cp "$SRCDIR/hosts.txt" "$BASE/hosts.txt"
+fi
+cp "$SRCDIR/start.sh"     "$BASE/start.sh"
+cp "$SRCDIR/stop.sh"      "$BASE/stop.sh"
+cp "$SRCDIR/uninstall.sh" "$BASE/uninstall.sh"
+# S99zapret2 по умолчанию ссылается на /data/opt/zapret2. Если BASE другой,
+# подставляем его, иначе автозапуск будет искать несуществующий каталог.
+if [ "$BASE" = "/data/opt/zapret2" ]; then
+    cp "$SRCDIR/S99zapret2" "$BASE/S99zapret2"
+else
+    ESC_BASE=$(printf '%s' "$BASE" | sed 's/[&#]/\\&/g')
+    sed "s#/data/opt/zapret2#$ESC_BASE#g" "$SRCDIR/S99zapret2" > "$BASE/S99zapret2"
+fi
 
-chmod 755 "$BASE/start.sh" "$BASE/stop.sh" "$BASE/S99zapret2"
+chmod 755 "$BASE/start.sh" "$BASE/stop.sh" "$BASE/uninstall.sh" "$BASE/S99zapret2"
 # Владелец всех установленных файлов — root, чтобы демон и init-скрипт
 # могли работать после перезагрузки.
 chown -R root:root "$BASE" 2>/dev/null || true
@@ -199,7 +219,9 @@ fi
 # ---- Запуск и проверка ------------------------------------------------------
 # Передаём BASE и QNUM, заданные при установке: скопированные start.sh/stop.sh
 # используют значения по умолчанию, если переменные не заданы.
-BASE="$BASE" QNUM="$QNUM" "$BASE/start.sh"
+# Если start.sh завершится с ошибкой (например, nfqws2 не поднялся), не
+# прерываем установку молча: показываем предупреждение и диагностику ниже.
+BASE="$BASE" QNUM="$QNUM" "$BASE/start.sh" || say "WARNING: start.sh failed, see $BASE/nfqws2.log"
 # Даём nfqws2 время запуститься и создать pid-файл.
 sleep 2
 

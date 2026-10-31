@@ -150,7 +150,7 @@ powershell -ExecutionPolicy Bypass -File .\windows-auto-install.ps1
    - скачает zapret2 v1.0.6 (`openwrt-embedded`) с GitHub;
    - распакует нужную архитектуру (`ip2net`, `mdig`, `nfqws2`), Lua-скрипты и
      fake-блобы в `/data/opt/zapret2`;
-   - скопирует `start.sh`, `stop.sh` и `hosts.txt`;
+   - скопирует `start.sh`, `stop.sh`, `uninstall.sh` и `hosts.txt`;
    - поставит автозапуск `/etc/init.d/S99zapret2`;
    - запустит обход и проверит `https://music.youtube.com/`.
 
@@ -278,6 +278,12 @@ iptables -t mangle -L ZAPRET2 -n -v
 
 После перезагрузки всё поднимается само (`S99zapret2`).
 
+Полное удаление (останавливает сервис, убирает автозапуск и каталог установки):
+
+```sh
+sh /data/opt/zapret2/uninstall.sh
+```
+
 ---
 
 ## 7. Если не заработало
@@ -302,7 +308,7 @@ iptables -t mangle -L ZAPRET2 -n -v
 
 ```sh
 --filter-udp=443 --filter-l7=quic --hostlist=$HOSTLIST --payload=quic_initial \
-    --lua-desync=fake:blob=fake_default_quic:repeats=6
+    --lua-desync=fake:blob=quic_initial_www_google_com:repeats=6
 ```
 
 и правило:
@@ -327,6 +333,7 @@ windows-auto-install.ps1 — автоустановка с ПК под Windows (
 files/install.sh         — установка zapret2 на колонку
 files/start.sh           — запуск nfqws2 + iptables
 files/stop.sh            — остановка
+files/uninstall.sh       — полное удаление zapret2
 files/hosts.txt          — хостлист (по умолчанию YouTube)
 files/S99zapret2         — init-скрипт автозапуска
 ```

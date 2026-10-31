@@ -24,6 +24,13 @@ HOSTLIST=$BASE/hosts.txt        # домены, для которых включ
 IFACE=${IFACE:-$(ip route 2>/dev/null | awk '/^default/{print $5; exit}')}
 [ -n "$IFACE" ] || IFACE=wlan0
 
+# Без бинарника nfqws2 запускать нечего. Проверяем заранее, чтобы не создавать
+# правила iptables, которые будут заворачивать трафик в несуществующую очередь.
+[ -x "$BASE/bin/nfqws2" ] || {
+    echo "[zapret2] ERROR: $BASE/bin/nfqws2 not found (run install.sh first)" >&2
+    exit 1
+}
+
 # Сначала останавливаем уже запущенный экземпляр и снимаем его правила,
 # иначе новая цепочка ZAPRET2 будет добавлена поверх старой.
 "$BASE/stop.sh" >/dev/null 2>&1
@@ -58,6 +65,14 @@ IFACE=${IFACE:-$(ip route 2>/dev/null | awk '/^default/{print $5; exit}')}
 echo $! > "$BASE/nfqws2.pid"
 # Небольшая пауза, чтобы nfqws2 успел открыть очередь до добавления правил.
 sleep 1
+
+# Если демон сразу завершился (нет Lua-файлов, занят порт/очередь и т.п.),
+# не добавляем правила: иначе трафик будет уходить в пустую очередь.
+if ! kill -0 "$(cat "$BASE/nfqws2.pid")" 2>/dev/null; then
+    echo "[zapret2] ERROR: nfqws2 failed to start, see $BASE/nfqws2.log" >&2
+    rm -f "$BASE/nfqws2.pid"
+    exit 1
+fi
 
 # connbytes ограничивает количество пакетов, отправляемых в пользовательское
 # пространство: обрабатываем только первые 20 пакетов каждого соединения.
